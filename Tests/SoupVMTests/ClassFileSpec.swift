@@ -10,19 +10,26 @@ class ClassFileSpec: QuickSpec {
         describe("initialization") {
             describe("magic number") {
                 context("invalid") {
-                    do {
-                        _ = try ClassFile(bytes: [0xCA, 0xFE, 0xBA, 0xBB])
-                        fail("invalid magic number passed")
-                    } catch {
-                        // pass
+                    let path = "Tests/SoupVMTests/Resources/InvalidMagicNumber.class"
+
+                    it("instantiation failed") {
+                        do {
+                            _ = try ClassFile(path: path)
+                            fail("invalid magic number passed")
+                        } catch {
+                            // pass
+                        }
                     }
                 }
 
                 context("valid") {
-                    do {
-                        _ = try ClassFile(bytes: [0xCA, 0xFE, 0xBA, 0xBE])
-                    } catch {
-                        fail("invalid magic number passed")
+                    let path = "Tests/SoupVMTests/Resources/ValidMagicNumber.class"
+                    it("instantiation success") {
+                        do {
+                            _ = try ClassFile(path: path)
+                        } catch {
+                            fail("invalid magic number passed")
+                        }
                     }
                 }
             }
