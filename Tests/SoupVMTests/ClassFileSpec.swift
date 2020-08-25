@@ -14,7 +14,7 @@ class ClassFileSpec: QuickSpec {
 
                     it("instantiation failed") {
                         do {
-                            _ = try ClassFile(path: path)
+                            _ = try ClassFile(forReadingAtPath: path)
                             fail("invalid magic number passed")
                         } catch {
                             // pass
@@ -26,11 +26,20 @@ class ClassFileSpec: QuickSpec {
                     let path = "Tests/SoupVMTests/Resources/ValidMagicNumber.class"
                     it("instantiation success") {
                         do {
-                            _ = try ClassFile(path: path)
-                        } catch {
-                            fail("invalid magic number passed")
+                            _ = try ClassFile(forReadingAtPath: path)
+                        } catch let error {
+                            fail("\(error)")
+                            return
                         }
                     }
+                }
+            }
+
+            describe("version") {
+                let path = "Tests/SoupVMTests/Resources/ValidVersion.class"
+                it("instantiation success") {
+                    let file = try! ClassFile(forReadingAtPath: path)
+                    expect(file.version) == "52.0"
                 }
             }
         }
