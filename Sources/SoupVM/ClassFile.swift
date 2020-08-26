@@ -11,8 +11,8 @@ struct ClassFile {
             throw ClassFileError.illegalMagicNumber
         }
 
-        self.minorVersion = bytes[4..<6].withUnsafeBytes { $0.load(as: UInt16.self) }.bigEndian
-        self.majorVersion = bytes[6..<8].withUnsafeBytes { $0.load(as: UInt16.self) }.bigEndian
+        self.minorVersion = bytes.withUnsafeBytes { $0.load(fromByteOffset: 4, as: UInt16.self).bigEndian }
+        self.majorVersion = bytes.withUnsafeBytes { $0.load(fromByteOffset: 6, as: UInt16.self).bigEndian }
     }
 
     init(forReadingAtPath path: String) throws {
