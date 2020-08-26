@@ -37,9 +37,17 @@ class ClassFileSpec: QuickSpec {
 
             describe("version") {
                 let path = "Tests/SoupVMTests/Resources/ValidVersion.class"
-                it("instantiation success") {
+                it("returns valid version") {
                     let file = try! ClassFile(forReadingAtPath: path)
                     expect(file.version) == "52.0"
+                }
+            }
+
+            describe("constantPoolCount") {
+                let path = "Tests/SoupVMTests/Resources/ConstantPoolCount.class"
+                it("returns valid constant pool count") {
+                    let file = try! ClassFile(forReadingAtPath: path)
+                    expect(file.constantPoolCount) == 29
                 }
             }
         }

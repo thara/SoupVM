@@ -4,6 +4,8 @@ struct ClassFile {
     let minorVersion: UInt16
     let majorVersion: UInt16
 
+    let constantPoolCount: UInt16
+
     static let magicNumber: [UInt8] = [0xCA, 0xFE, 0xBA, 0xBE]
 
     init(bytes: [UInt8]) throws {
@@ -13,6 +15,8 @@ struct ClassFile {
 
         self.minorVersion = bytes.withUnsafeBytes { $0.load(fromByteOffset: 4, as: UInt16.self).bigEndian }
         self.majorVersion = bytes.withUnsafeBytes { $0.load(fromByteOffset: 6, as: UInt16.self).bigEndian }
+
+        self.constantPoolCount = bytes.withUnsafeBytes { $0.load(fromByteOffset: 8, as: UInt16.self).bigEndian }
     }
 
     init(forReadingAtPath path: String) throws {
