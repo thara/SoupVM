@@ -21,12 +21,16 @@ struct ClassFile {
             throw ClassFileError.illegalMagicNumber
         }
 
-        self.minorVersion = bytes.withUnsafeBytes { $0.load(fromByteOffset: 4, as: UInt16.self).bigEndian }
-        self.majorVersion = bytes.withUnsafeBytes { $0.load(fromByteOffset: 6, as: UInt16.self).bigEndian }
+        var p = bytes.withUnsafeBytes { $0.baseAddress! }
+        p += 4
 
-        self.constantPoolCount = bytes.withUnsafeBytes { $0.load(fromByteOffset: 8, as: UInt16.self).bigEndian }
+        self.minorVersion = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
+        p += 2
+        self.majorVersion = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
+        p += 2
 
-        var p = bytes.withUnsafeBytes { $0.baseAddress! + 10 }
+        self.constantPoolCount = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
+        p += 2
 
         var constantPool = [ConstantPoolInfo?](repeating: nil, count: Int(self.constantPoolCount - 1))
         for i in 0..<constantPool.count {
