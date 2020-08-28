@@ -86,6 +86,14 @@ class ClassFileSpec: QuickSpec {
                     expect(file.constantPool[27]) == .some(.utf8(string: "(Ljava/lang/String;)V"))
                 }
             }
+
+            describe("accessFlag") {
+                let path = "Tests/SoupVMTests/Resources/AccessFlag.class"
+                it("parses valid access flag") {
+                    let file = try! ClassFile(forReadingAtPath: path)
+                    expect(file.accessFlag) == [.public, .`super`]
+                }
+            }
         }
     }
 }
