@@ -94,6 +94,15 @@ class ClassFileSpec: QuickSpec {
                     expect(file.accessFlag) == [.public, .`super`]
                 }
             }
+
+            describe("thisClass/superClass") {
+                let path = "Tests/SoupVMTests/Resources/ThisClass.class"
+                it("return class info") {
+                    let file = try! ClassFile(forReadingAtPath: path)
+                    expect(file.thisClass) == .class(nameIndex: 21)
+                    expect(file.superClass) == .class(nameIndex: 22)
+                }
+            }
         }
     }
 }

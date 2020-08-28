@@ -8,6 +8,8 @@ struct ClassFile {
     let constantPool: [ConstantPoolInfo]
 
     let accessFlag: AccessFlag
+    let thisClassIndex: UInt16
+    let superClassIndex: UInt16
 
     static let magicNumber: [UInt8] = [0xCA, 0xFE, 0xBA, 0xBE]
 
@@ -34,6 +36,29 @@ struct ClassFile {
         self.constantPool = constantPool.compactMap { $0 }
 
         self.accessFlag = AccessFlag(rawValue: p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian)
+        p += 2
+
+        self.thisClassIndex = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
+        p += 2
+
+        if constantPool.count <= self.thisClassIndex {
+            throw ClassFileError.thisClassIndexOutbound(self.thisClassIndex)
+        }
+        guard case .class = self.constantPool[Int(self.thisClassIndex - 1)] else {
+            throw ClassFileError.thisClassNotClassInfo(self.thisClassIndex)
+        }
+
+        self.superClassIndex = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
+        p += 2
+
+        if constantPool.count <= self.superClassIndex {
+            throw ClassFileError.superClassIndexOutbound(self.superClassIndex)
+        }
+        if self.superClassIndex != 0 {
+            guard case .class = self.constantPool[Int(self.superClassIndex - 1)] else {
+                throw ClassFileError.superClassNotClassInfo(self.superClassIndex)
+            }
+        }
     }
 
     init(forReadingAtPath path: String) throws {
@@ -49,6 +74,14 @@ struct ClassFile {
     var version: String {
         "\(majorVersion).\(minorVersion)"
     }
+
+    var thisClass: ConstantPoolInfo {
+        constantPool[Int(thisClassIndex - 1)]
+    }
+
+    var superClass: ConstantPoolInfo? {
+        0 < superClassIndex ? constantPool[Int(superClassIndex - 1)] : nil
+    }
 }
 
 enum ClassFileError: Error {
@@ -56,6 +89,11 @@ enum ClassFileError: Error {
 
     case illegalMagicNumber
     case unsupportedConstantPoolInfo(Int)
+
+    case thisClassIndexOutbound(UInt16)
+    case thisClassNotClassInfo(UInt16)
+    case superClassIndexOutbound(UInt16)
+    case superClassNotClassInfo(UInt16)
 }
 
 struct AccessFlag: OptionSet {
