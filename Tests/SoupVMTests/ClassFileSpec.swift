@@ -103,6 +103,28 @@ class ClassFileSpec: QuickSpec {
                     expect(file.superClass) == .class(nameIndex: 22)
                 }
             }
+
+            describe("interfaces") {
+
+                context("No interfaces") {
+                    let path = "Tests/SoupVMTests/Resources/NoInterfaces.class"
+                    it("return empty interfaces") {
+                        let file = try! ClassFile(forReadingAtPath: path)
+                        expect(file.interfacesCount) == 0
+                        expect(file.interfaces) == []
+                    }
+                }
+
+                context("has interfaces") {
+                    let path = "Tests/SoupVMTests/Resources/Interfaces.class"
+                    it("return empty interfaces") {
+                        let file = try! ClassFile(forReadingAtPath: path)
+                        expect(file.interfacesCount) == 2
+                        expect(file.interfaces[0]) == .class(nameIndex: 25)
+                        expect(file.interfaces[1]) == .class(nameIndex: 26)
+                    }
+                }
+            }
         }
     }
 }

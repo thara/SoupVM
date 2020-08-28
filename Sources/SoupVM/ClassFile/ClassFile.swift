@@ -11,6 +11,9 @@ struct ClassFile {
     let thisClassIndex: UInt16
     let superClassIndex: UInt16
 
+    let interfacesCount: UInt16
+    let interfaceIndexes: [UInt16]
+
     static let magicNumber: [UInt8] = [0xCA, 0xFE, 0xBA, 0xBE]
 
     init(bytes: [UInt8]) throws {
@@ -59,6 +62,20 @@ struct ClassFile {
                 throw ClassFileError.superClassNotClassInfo(self.superClassIndex)
             }
         }
+
+        self.interfacesCount = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
+        p += 2
+
+        var interfaces = [UInt16?](repeating: nil, count: Int(self.interfacesCount))
+        for i in 0..<interfaces.count {
+            let index = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
+            guard case .class = self.constantPool[Int(index - 1)] else {
+                throw ClassFileError.interfaceNotClassInfo(index)
+            }
+            interfaces[Int(i)] = index
+            p += 2
+        }
+        self.interfaceIndexes = interfaces.compactMap { $0 }
     }
 
     init(forReadingAtPath path: String) throws {
@@ -82,6 +99,10 @@ struct ClassFile {
     var superClass: ConstantPoolInfo? {
         0 < superClassIndex ? constantPool[Int(superClassIndex - 1)] : nil
     }
+
+    var interfaces: [ConstantPoolInfo] {
+        interfaceIndexes.map { constantPool[Int($0 - 1)] }
+    }
 }
 
 enum ClassFileError: Error {
@@ -94,6 +115,8 @@ enum ClassFileError: Error {
     case thisClassNotClassInfo(UInt16)
     case superClassIndexOutbound(UInt16)
     case superClassNotClassInfo(UInt16)
+
+    case interfaceNotClassInfo(UInt16)
 }
 
 struct AccessFlag: OptionSet {
