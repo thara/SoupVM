@@ -14,6 +14,9 @@ struct ClassFile {
     let interfacesCount: UInt16
     let interfaceIndexes: [UInt16]
 
+    let fieldsCount: UInt16
+    let fields: [Field]
+
     static let magicNumber: [UInt8] = [0xCA, 0xFE, 0xBA, 0xBE]
 
     init(bytes: [UInt8]) throws {
@@ -80,6 +83,15 @@ struct ClassFile {
             p += 2
         }
         self.interfaceIndexes = interfaces.compactMap { $0 }
+
+        self.fieldsCount = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
+        p += 2
+
+        var fields = [Field?](repeating: nil, count: Int(self.fieldsCount))
+        for i in 0..<fields.count {
+            fields[Int(i)] = try Field(from: p, with: self.constantPool)
+        }
+        self.fields = fields.compactMap { $0 }
     }
 
     init(forReadingAtPath path: String) throws {
@@ -121,6 +133,12 @@ enum ClassFileError: Error {
     case superClassNotClassInfo(UInt16)
 
     case interfaceNotClassInfo(UInt16)
+
+    case attributeNameIndexNotUtf8(UInt16)
+    case unsupportedAttributeName
+    case invalidAttributeLength(String, UInt16)
+
+    case attributeInvalidConstantPoolEntryType(UInt16)
 }
 
 struct AccessFlag: OptionSet {
