@@ -37,11 +37,9 @@ struct ClassFile {
 
         var constantPool = [ConstantPoolInfo?](repeating: nil, count: Int(self.constantPoolCount - 1))
         for i in 0..<constantPool.count {
-            guard let info = ConstantPoolInfo(from: p) else {
-                throw ClassFileError.unsupportedConstantPoolInfo(i)
-            }
+            let (info, size) = try ConstantPoolInfo.parse(from: p)
             constantPool[Int(i)] = info
-            p += info.size
+            p += size
         }
         self.constantPool = constantPool.compactMap { $0 }
 
@@ -157,4 +155,13 @@ struct AccessFlag: OptionSet {
     static let synthetic = AccessFlag(rawValue: 0x1000)
     static let annotation = AccessFlag(rawValue: 0x2000)
     static let `enum` = AccessFlag(rawValue: 0x4000)
+}
+
+extension UnsafeRawPointer {
+
+    mutating func next<T>(assumingTo type: T.Type) -> T {
+        let value = self.assumingMemoryBound(to: type).pointee
+        self += MemoryLayout<T>.size
+        return value
+    }
 }
