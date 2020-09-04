@@ -125,6 +125,32 @@ class ClassFileSpec: QuickSpec {
                     }
                 }
             }
+
+            describe("fields") {
+                let path = "Tests/SoupVMTests/Resources/Fields.class"
+                it("parsed all fields") {
+                    let file = try! ClassFile(forReadingAtPath: path)
+                    expect(file.fieldsCount) == 2
+
+                    expect(file.fields[0].accessFlags) == [.`public`]
+                    expect(file.fields[0].nameIndex) == 11
+                    // TODO
+                    // expect(file.fields[0].descriptorIndex) == 11
+                    expect(file.fields[0].attributes.count) == 0
+
+                    expect(file.fields[1].accessFlags) == [.`static`, .final]
+                    expect(file.fields[1].nameIndex) == 13
+                    // TODO
+                    // expect(file.fields[1].descriptorIndex) == 11
+                    expect(file.fields[1].attributes.count) == 1
+
+                    if case let .constantValue(valueIndex) = file.fields[1].attributes[0] {
+                        expect(valueIndex) == 16
+                    } else {
+                        fail("Unmatch to .constantValue")
+                    }
+                }
+            }
         }
     }
 }

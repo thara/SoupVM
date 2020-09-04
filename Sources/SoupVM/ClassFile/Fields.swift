@@ -9,26 +9,33 @@ struct Field {
 
     var attributes: [Attribute]
 
-    init(from p: UnsafeRawPointer, with constantPool: [ConstantPoolInfo]) throws {
-        var p = p
-        self.accessFlags = FieldAccessFlag(rawValue: p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian)
+    static func parse(from base: UnsafeRawPointer, with constantPool: [ConstantPoolInfo]) throws -> (Field, Int) {
+        var p = base
+        let accessFlags = FieldAccessFlag(rawValue: p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian)
         p += 2
 
-        self.nameIndex = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
+        let nameIndex = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
         p += 2
 
-        self.descriptorIndex = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
+        let descriptorIndex = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
         p += 2
 
         let attributesCount = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
+        p += 2
 
         var attributes = [Attribute?](repeating: nil, count: Int(attributesCount))
         for i in 0..<attributes.count {
-            let attribute = try Attribute(from: p, with: constantPool)
+            let (attribute, size) = try Attribute.parse(from: p, with: constantPool)
             attributes[Int(i)] = attribute
-            p += 2
+            p += size
         }
-        self.attributes = attributes.compactMap { $0 }
+
+        let field = Field(
+            accessFlags: accessFlags,
+            nameIndex: nameIndex,
+            descriptorIndex: descriptorIndex,
+            attributes: attributes.compactMap { $0 })
+        return (field, p - base)
     }
 }
 

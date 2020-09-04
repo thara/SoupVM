@@ -89,7 +89,9 @@ struct ClassFile {
 
         var fields = [Field?](repeating: nil, count: Int(self.fieldsCount))
         for i in 0..<fields.count {
-            fields[Int(i)] = try Field(from: p, with: self.constantPool)
+            let (field, size) = try Field.parse(from: p, with: self.constantPool)
+            fields[Int(i)] = field
+            p += size
         }
         self.fields = fields.compactMap { $0 }
     }
@@ -135,10 +137,13 @@ enum ClassFileError: Error {
     case interfaceNotClassInfo(UInt16)
 
     case attributeNameIndexNotUtf8(UInt16)
-    case unsupportedAttributeName
-    case invalidAttributeLength(String, UInt16)
+    case unsupportedAttributeName(String)
+    case invalidAttributeLength(String, UInt32)
 
     case attributeInvalidConstantPoolEntryType(UInt16)
+    case attributeElementValueInvalidConstantPoolEntryType(UInt16)
+
+    case unsupportedAnnotationelementValueTag(UInt8)
 }
 
 struct AccessFlag: OptionSet {
