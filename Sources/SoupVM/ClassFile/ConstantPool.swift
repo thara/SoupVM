@@ -81,29 +81,4 @@ enum ConstantPoolInfo {
 
         return (info, p - base)
     }
-
-    var size: Int {
-        switch self {
-        case .`class`:
-            return 3
-        case .fieldRef, .methodRef, .interfaceMethodRef:
-            return 5
-        case .string:
-            return 3
-        case .integer, .float:
-            return 5
-        case .long, .double:
-            return 9
-        case .nameAndType:
-            return 5
-        case .utf8(let bytes):
-            return 3 + bytes.count
-        case .methodHandle:
-            return 4
-        case .methodType:
-            return 3
-        case .invokeDynamic:
-            return 5
-        }
-    }
 }
