@@ -27,13 +27,9 @@ struct ClassFile {
         var p = bytes.withUnsafeBytes { $0.baseAddress! }
         p += 4
 
-        self.minorVersion = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
-        p += 2
-        self.majorVersion = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
-        p += 2
-
-        self.constantPoolCount = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
-        p += 2
+        self.minorVersion = p.next(assumingTo: UInt16.self).bigEndian
+        self.majorVersion = p.next(assumingTo: UInt16.self).bigEndian
+        self.constantPoolCount = p.next(assumingTo: UInt16.self).bigEndian
 
         var constantPool = [ConstantPoolInfo?](repeating: nil, count: Int(self.constantPoolCount - 1))
         for i in 0..<constantPool.count {
@@ -43,11 +39,8 @@ struct ClassFile {
         }
         self.constantPool = constantPool.compactMap { $0 }
 
-        self.accessFlag = AccessFlag(rawValue: p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian)
-        p += 2
-
-        self.thisClassIndex = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
-        p += 2
+        self.accessFlag = AccessFlag(rawValue: p.next(assumingTo: UInt16.self).bigEndian)
+        self.thisClassIndex = p.next(assumingTo: UInt16.self).bigEndian
 
         if constantPool.count <= self.thisClassIndex {
             throw ClassFileError.thisClassIndexOutbound(self.thisClassIndex)
@@ -56,8 +49,7 @@ struct ClassFile {
             throw ClassFileError.thisClassNotClassInfo(self.thisClassIndex)
         }
 
-        self.superClassIndex = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
-        p += 2
+        self.superClassIndex = p.next(assumingTo: UInt16.self).bigEndian
 
         if constantPool.count <= self.superClassIndex {
             throw ClassFileError.superClassIndexOutbound(self.superClassIndex)
@@ -68,22 +60,19 @@ struct ClassFile {
             }
         }
 
-        self.interfacesCount = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
-        p += 2
+        self.interfacesCount = p.next(assumingTo: UInt16.self).bigEndian
 
         var interfaces = [UInt16?](repeating: nil, count: Int(self.interfacesCount))
         for i in 0..<interfaces.count {
-            let index = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
+            let index = p.next(assumingTo: UInt16.self).bigEndian
             guard case .class = self.constantPool[Int(index - 1)] else {
                 throw ClassFileError.interfaceNotClassInfo(index)
             }
             interfaces[Int(i)] = index
-            p += 2
         }
         self.interfaceIndexes = interfaces.compactMap { $0 }
 
-        self.fieldsCount = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
-        p += 2
+        self.fieldsCount = p.next(assumingTo: UInt16.self).bigEndian
 
         var fields = [Field?](repeating: nil, count: Int(self.fieldsCount))
         for i in 0..<fields.count {

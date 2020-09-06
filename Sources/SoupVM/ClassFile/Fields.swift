@@ -11,17 +11,11 @@ struct Field {
 
     static func parse(from base: UnsafeRawPointer, with constantPool: [ConstantPoolInfo]) throws -> (Field, Int) {
         var p = base
-        let accessFlags = FieldAccessFlag(rawValue: p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian)
-        p += 2
 
-        let nameIndex = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
-        p += 2
-
-        let descriptorIndex = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
-        p += 2
-
-        let attributesCount = p.assumingMemoryBound(to: UInt16.self).pointee.bigEndian
-        p += 2
+        let accessFlags = FieldAccessFlag(rawValue: p.next(assumingTo: UInt16.self).bigEndian)
+        let nameIndex = p.next(assumingTo: UInt16.self).bigEndian
+        let descriptorIndex = p.next(assumingTo: UInt16.self).bigEndian
+        let attributesCount = p.next(assumingTo: UInt16.self).bigEndian
 
         var attributes = [Attribute?](repeating: nil, count: Int(attributesCount))
         for i in 0..<attributes.count {
