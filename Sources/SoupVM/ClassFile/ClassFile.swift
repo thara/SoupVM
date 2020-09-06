@@ -33,9 +33,7 @@ struct ClassFile {
 
         var constantPool = [ConstantPoolInfo?](repeating: nil, count: Int(self.constantPoolCount - 1))
         for i in 0..<constantPool.count {
-            let (info, size) = try ConstantPoolInfo.parse(from: p)
-            constantPool[Int(i)] = info
-            p += size
+            constantPool[Int(i)] = try p.nextConstantPoolInfo()
         }
         self.constantPool = constantPool.compactMap { $0 }
 
@@ -76,9 +74,7 @@ struct ClassFile {
 
         var fields = [Field?](repeating: nil, count: Int(self.fieldsCount))
         for i in 0..<fields.count {
-            let (field, size) = try Field.parse(from: p, with: self.constantPool)
-            fields[Int(i)] = field
-            p += size
+            fields[Int(i)] = try p.nextField(with: self.constantPool)
         }
         self.fields = fields.compactMap { $0 }
     }

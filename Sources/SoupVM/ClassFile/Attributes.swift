@@ -9,12 +9,28 @@ enum Attribute {
     //TODO
     // case runtimeVisibleTypeAnnotations
     // case runtimeInvisibleTypeAnnotations
+}
 
-    static func parse(from base: UnsafeRawPointer, with constantPool: [ConstantPoolInfo]) throws -> (Attribute, Int) {
-        var p = base
+struct Annotation {
+    var typeIndex: UInt16
 
-        let attributeNameIndex = p.next(assumingTo: UInt16.self).bigEndian
-        let attributeLength = p.next(assumingTo: UInt32.self).bigEndian
+    typealias ElementValuePair = (elementNameIndex: UInt16, value: ElementValue)
+    var elementValuePairs: [ElementValuePair]
+
+    enum ElementValue {
+        case constValueIndex(UInt16)
+        case enumConstValue(typeNameIndex: UInt16, constNameIndex: UInt16)
+        case classInfoIndex(UInt16)
+        case annotationValue(Annotation)
+        indirect case arrayValue([ElementValue])
+    }
+}
+
+extension UnsafeRawPointer {
+
+    mutating func nextAttribute(with constantPool: [ConstantPoolInfo]) throws -> Attribute {
+        let attributeNameIndex = self.next(assumingTo: UInt16.self).bigEndian
+        let attributeLength = self.next(assumingTo: UInt32.self).bigEndian
 
         guard case .utf8(let attrName) = constantPool[Int(attributeNameIndex - 1)] else {
             throw ClassFileError.attributeNameIndexNotUtf8(attributeNameIndex)
@@ -27,7 +43,7 @@ enum Attribute {
                 throw ClassFileError.invalidAttributeLength(attrName, attributeLength)
             }
 
-            let constantValueIndex = p.next(assumingTo: UInt16.self).bigEndian
+            let constantValueIndex = self.next(assumingTo: UInt16.self).bigEndian
             switch constantPool[Int(constantValueIndex - 1)] {
             case .long, .float, .double, .integer, .string:
                 attr = .constantValue(valueIndex: constantValueIndex)
@@ -48,149 +64,126 @@ enum Attribute {
             guard attributeLength == 2 else {
                 throw ClassFileError.invalidAttributeLength(attrName, attributeLength)
             }
-            let signatureIndex = p.next(assumingTo: UInt16.self).bigEndian
+            let signatureIndex = self.next(assumingTo: UInt16.self).bigEndian
             guard case .utf8 = constantPool[Int(signatureIndex - 1)] else {
                 throw ClassFileError.attributeInvalidConstantPoolEntryType(signatureIndex)
             }
             attr = .signature(signatureIndex: signatureIndex)
         case "RuntimeVisibleAnnotations":
-            let numAnnotations = p.next(assumingTo: UInt16.self).bigEndian
+            let numAnnotations = self.next(assumingTo: UInt16.self).bigEndian
 
             var annotations = [Annotation?](repeating: nil, count: Int(numAnnotations))
             for i in 0..<annotations.count {
-                annotations[i] = try Annotation(from: p, with: constantPool)
+                annotations[i] = try self.nextAnnotation(with: constantPool)
             }
             attr = .runtimeVisibleAnnotations(annotations: annotations.compactMap { $0 })
         case "RuntimeInvisibleAnnotations":
-            let numAnnotations = p.next(assumingTo: UInt16.self).bigEndian
+            let numAnnotations = self.next(assumingTo: UInt16.self).bigEndian
 
             var annotations = [Annotation?](repeating: nil, count: Int(numAnnotations))
             for i in 0..<annotations.count {
-                annotations[i] = try Annotation(from: p, with: constantPool)
+                annotations[i] = try self.nextAnnotation(with: constantPool)
             }
             attr = .runtimeInvisibleAnnotations(annotations: annotations.compactMap { $0 })
         default:
             throw ClassFileError.unsupportedAttributeName(attrName)
         }
 
-        return (attr, p - base)
-    }
-}
-
-struct Annotation {
-    var typeIndex: UInt16
-
-    typealias ElementValuePair = (elementNameIndex: UInt16, value: ElementValue)
-    var elementValuePairs: [ElementValuePair]
-
-    enum ElementValue {
-        case constValueIndex(UInt16)
-        case enumConstValue(typeNameIndex: UInt16, constNameIndex: UInt16)
-        case classInfoIndex(UInt16)
-        case annotationValue(Annotation)
-        indirect case arrayValue([ElementValue])
+        return attr
     }
 
-    init(from p: UnsafeRawPointer, with constantPool: [ConstantPoolInfo]) throws {
-        var p = p
+    mutating func nextAnnotation(with constantPool: [ConstantPoolInfo]) throws -> Annotation {
+        let typeIndex = self.next(assumingTo: UInt16.self).bigEndian
+        let numElementValuePairs = self.next(assumingTo: UInt16.self).bigEndian
 
-        let typeIndex = p.next(assumingTo: UInt16.self).bigEndian
-        let numElementValuePairs = p.next(assumingTo: UInt16.self).bigEndian
-
-        var pairs = [ElementValuePair?](repeating: nil, count: Int(numElementValuePairs))
+        var pairs = [Annotation.ElementValuePair?](repeating: nil, count: Int(numElementValuePairs))
         for i in 0..<pairs.count {
-            let nameIndex = p.next(assumingTo: UInt16.self).bigEndian
-            pairs[i] = (elementNameIndex: nameIndex, value: try ElementValue(from: p, with: constantPool))
+            let nameIndex = self.next(assumingTo: UInt16.self).bigEndian
+            pairs[i] = (elementNameIndex: nameIndex, value: try self.nextAnnotationElementValue(with: constantPool))
         }
 
-        self.typeIndex = typeIndex
-        self.elementValuePairs = pairs.compactMap { $0 }
+        return Annotation(typeIndex: typeIndex, elementValuePairs: pairs.compactMap { $0 })
     }
-}
 
-extension Annotation.ElementValue {
-
-    init(from p: UnsafeRawPointer, with constantPool: [ConstantPoolInfo]) throws {
-        var p = p
-
-        let tag = p.next(assumingTo: UInt8.self).bigEndian
+    mutating func nextAnnotationElementValue(with constantPool: [ConstantPoolInfo]) throws -> Annotation.ElementValue {
+        let tag = self.next(assumingTo: UInt8.self).bigEndian
 
         switch tag {
         case Character("B").asciiValue, Character("C").asciiValue:
-            let index = p.next(assumingTo: UInt16.self).bigEndian
+            let index = self.next(assumingTo: UInt16.self).bigEndian
             guard case .integer = constantPool[Int(index - 1)] else {
                 throw ClassFileError.attributeElementValueInvalidConstantPoolEntryType(index)
             }
-            self = .constValueIndex(index)
+            return .constValueIndex(index)
         case Character("D").asciiValue:
-            let index = p.next(assumingTo: UInt16.self).bigEndian
+            let index = self.next(assumingTo: UInt16.self).bigEndian
             guard case .double = constantPool[Int(index - 1)] else {
                 throw ClassFileError.attributeElementValueInvalidConstantPoolEntryType(index)
             }
-            self = .constValueIndex(index)
+            return .constValueIndex(index)
         case Character("F").asciiValue:
-            let index = p.next(assumingTo: UInt16.self).bigEndian
+            let index = self.next(assumingTo: UInt16.self).bigEndian
             guard case .float = constantPool[Int(index - 1)] else {
                 throw ClassFileError.attributeElementValueInvalidConstantPoolEntryType(index)
             }
-            self = .constValueIndex(index)
+            return .constValueIndex(index)
         case Character("I").asciiValue:
-            let index = p.next(assumingTo: UInt16.self).bigEndian
+            let index = self.next(assumingTo: UInt16.self).bigEndian
             guard case .integer = constantPool[Int(index - 1)] else {
                 throw ClassFileError.attributeElementValueInvalidConstantPoolEntryType(index)
             }
-            self = .constValueIndex(index)
+            return .constValueIndex(index)
         case Character("J").asciiValue:
-            let index = p.next(assumingTo: UInt16.self).bigEndian
+            let index = self.next(assumingTo: UInt16.self).bigEndian
             guard case .long = constantPool[Int(index - 1)] else {
                 throw ClassFileError.attributeElementValueInvalidConstantPoolEntryType(index)
             }
-            self = .constValueIndex(index)
+            return .constValueIndex(index)
         case Character("S").asciiValue:
-            let index = p.next(assumingTo: UInt16.self).bigEndian
+            let index = self.next(assumingTo: UInt16.self).bigEndian
             guard case .integer = constantPool[Int(index - 1)] else {
                 throw ClassFileError.attributeElementValueInvalidConstantPoolEntryType(index)
             }
-            self = .constValueIndex(index)
+            return .constValueIndex(index)
         case Character("Z").asciiValue:
-            let index = p.next(assumingTo: UInt16.self).bigEndian
+            let index = self.next(assumingTo: UInt16.self).bigEndian
             guard case .integer = constantPool[Int(index - 1)] else {
                 throw ClassFileError.attributeElementValueInvalidConstantPoolEntryType(index)
             }
-            self = .constValueIndex(index)
+            return .constValueIndex(index)
         case Character("s").asciiValue:
-            let index = p.next(assumingTo: UInt16.self).bigEndian
+            let index = self.next(assumingTo: UInt16.self).bigEndian
             guard case .utf8 = constantPool[Int(index - 1)] else {
                 throw ClassFileError.attributeElementValueInvalidConstantPoolEntryType(index)
             }
-            self = .constValueIndex(index)
+            return .constValueIndex(index)
         case Character("e").asciiValue:
-            let typeNameIndex = p.next(assumingTo: UInt16.self).bigEndian
+            let typeNameIndex = self.next(assumingTo: UInt16.self).bigEndian
             guard case .utf8 = constantPool[Int(typeNameIndex + 1)] else {
                 throw ClassFileError.attributeElementValueInvalidConstantPoolEntryType(typeNameIndex)
             }
-            let constNameIndex = p.next(assumingTo: UInt16.self).bigEndian
+            let constNameIndex = self.next(assumingTo: UInt16.self).bigEndian
             guard case .utf8 = constantPool[Int(constNameIndex + 1)] else {
                 throw ClassFileError.attributeElementValueInvalidConstantPoolEntryType(constNameIndex)
             }
-            self = .enumConstValue(typeNameIndex: typeNameIndex, constNameIndex: constNameIndex)
+            return .enumConstValue(typeNameIndex: typeNameIndex, constNameIndex: constNameIndex)
         case Character("c").asciiValue:
-            let index = p.next(assumingTo: UInt16.self).bigEndian
+            let index = self.next(assumingTo: UInt16.self).bigEndian
             guard case .utf8 = constantPool[Int(index + 1)] else {
                 throw ClassFileError.attributeElementValueInvalidConstantPoolEntryType(index)
             }
-            self = .classInfoIndex(index)
+            return .classInfoIndex(index)
         case Character("@").asciiValue:
-            let annotation = try Annotation(from: p, with: constantPool)
-            self = .annotationValue(annotation)
+            let annotation = try self.nextAnnotation(with: constantPool)
+            return .annotationValue(annotation)
         case Character("[").asciiValue:
-            let numValues = p.next(assumingTo: UInt16.self).bigEndian
+            let numValues = self.next(assumingTo: UInt16.self).bigEndian
 
-            var values = [Self?](repeating: nil, count: Int(numValues))
+            var values = [Annotation.ElementValue?](repeating: nil, count: Int(numValues))
             for i in 0..<values.count {
-                values[i] = try Self(from: p, with: constantPool)
+                values[i] = try self.nextAnnotationElementValue(with: constantPool)
             }
-            self = .arrayValue(values.compactMap { $0 })
+            return .arrayValue(values.compactMap { $0 })
         default:
             throw ClassFileError.unsupportedAnnotationelementValueTag(tag)
         }

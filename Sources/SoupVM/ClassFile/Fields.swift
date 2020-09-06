@@ -8,29 +8,6 @@ struct Field {
     var descriptorIndex: UInt16
 
     var attributes: [Attribute]
-
-    static func parse(from base: UnsafeRawPointer, with constantPool: [ConstantPoolInfo]) throws -> (Field, Int) {
-        var p = base
-
-        let accessFlags = FieldAccessFlag(rawValue: p.next(assumingTo: UInt16.self).bigEndian)
-        let nameIndex = p.next(assumingTo: UInt16.self).bigEndian
-        let descriptorIndex = p.next(assumingTo: UInt16.self).bigEndian
-        let attributesCount = p.next(assumingTo: UInt16.self).bigEndian
-
-        var attributes = [Attribute?](repeating: nil, count: Int(attributesCount))
-        for i in 0..<attributes.count {
-            let (attribute, size) = try Attribute.parse(from: p, with: constantPool)
-            attributes[Int(i)] = attribute
-            p += size
-        }
-
-        let field = Field(
-            accessFlags: accessFlags,
-            nameIndex: nameIndex,
-            descriptorIndex: descriptorIndex,
-            attributes: attributes.compactMap { $0 })
-        return (field, p - base)
-    }
 }
 
 struct FieldAccessFlag: OptionSet {
@@ -45,4 +22,25 @@ struct FieldAccessFlag: OptionSet {
     static let transient = FieldAccessFlag(rawValue: 0x0080)
     static let synthetic = FieldAccessFlag(rawValue: 0x1000)
     static let `enum` = FieldAccessFlag(rawValue: 0x4000)
+}
+
+extension UnsafeRawPointer {
+    mutating func nextField(with constantPool: [ConstantPoolInfo]) throws -> Field {
+        let accessFlags = FieldAccessFlag(rawValue: self.next(assumingTo: UInt16.self).bigEndian)
+        let nameIndex = self.next(assumingTo: UInt16.self).bigEndian
+        let descriptorIndex = self.next(assumingTo: UInt16.self).bigEndian
+        let attributesCount = self.next(assumingTo: UInt16.self).bigEndian
+
+        var attributes = [Attribute?](repeating: nil, count: Int(attributesCount))
+        for i in 0..<attributes.count {
+            attributes[Int(i)] = try self.nextAttribute(with: constantPool)
+        }
+
+        let field = Field(
+            accessFlags: accessFlags,
+            nameIndex: nameIndex,
+            descriptorIndex: descriptorIndex,
+            attributes: attributes.compactMap { $0 })
+        return field
+    }
 }
