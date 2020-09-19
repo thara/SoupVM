@@ -127,6 +127,8 @@ enum ClassFileError: Error {
     case attributeElementValueInvalidConstantPoolEntryType(UInt16)
 
     case unsupportedAnnotationelementValueTag(UInt8)
+
+    case unsupportedTypeAnnotationTarget(UInt8)
 }
 
 struct AccessFlag: OptionSet {

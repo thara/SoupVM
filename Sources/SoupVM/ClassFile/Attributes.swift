@@ -6,24 +6,58 @@ enum Attribute {
     case signature(signatureIndex: UInt16)
     case runtimeVisibleAnnotations(annotations: [Annotation])
     case runtimeInvisibleAnnotations(annotations: [Annotation])
-    //TODO
-    // case runtimeVisibleTypeAnnotations
-    // case runtimeInvisibleTypeAnnotations
+    case runtimeVisibleTypeAnnotations(annotations: [TypeAnnotation])
+    case runtimeInvisibleTypeAnnotations(annotations: [TypeAnnotation])
+}
+
+typealias AnnotationElementValuePair = (elementNameIndex: UInt16, value: AnnotationElementValue)
+
+enum AnnotationElementValue {
+    case constValueIndex(UInt16)
+    case enumConstValue(typeNameIndex: UInt16, constNameIndex: UInt16)
+    case classInfoIndex(UInt16)
+    case annotationValue(Annotation)
+    indirect case arrayValue([AnnotationElementValue])
 }
 
 struct Annotation {
     var typeIndex: UInt16
+    var elementValuePairs: [AnnotationElementValuePair]
+}
 
-    typealias ElementValuePair = (elementNameIndex: UInt16, value: ElementValue)
-    var elementValuePairs: [ElementValuePair]
+struct TypeAnnotation {
 
-    enum ElementValue {
-        case constValueIndex(UInt16)
-        case enumConstValue(typeNameIndex: UInt16, constNameIndex: UInt16)
-        case classInfoIndex(UInt16)
-        case annotationValue(Annotation)
-        indirect case arrayValue([ElementValue])
+    enum Target {
+        case typeParameter(index: UInt8)
+        case superType(index: UInt16)
+        case typeParameterBound(typeParameterIndex: UInt8, boundIndex: UInt8)
+        case empty
+        case formalParameter(index: UInt8)
+        case `throws`(index: UInt16)
+        case localvar(table: [LocalVariable])
+        case `catch`(exceptionTableIndex: UInt16)
+        case offset(UInt16)
+        case typeArgument(offset: UInt16, typeArgumentIndex: UInt8)
+
+        struct LocalVariable {
+            var startPC: UInt16
+            var length: UInt16
+            var index: UInt16
+        }
     }
+
+    struct TypePath {
+        var path: [Path]
+
+        struct Path {
+            var typePathKind: UInt8
+            var typeArgumentIndex: UInt8
+        }
+    }
+
+    var targetInfo: Target
+    var targetPath: TypePath
+    var elementValuePairs: [AnnotationElementValuePair]
 }
 
 extension UnsafeRawPointer {
@@ -85,18 +119,37 @@ extension UnsafeRawPointer {
                 annotations[i] = try self.nextAnnotation(with: constantPool)
             }
             attr = .runtimeInvisibleAnnotations(annotations: annotations.compactMap { $0 })
+        case "RuntimeVisibleTypeAnnotations":
+            let numAnnotations = self.next(assumingTo: UInt16.self).bigEndian
+
+            var annotations = [TypeAnnotation?](repeating: nil, count: Int(numAnnotations))
+            for i in 0..<annotations.count {
+                annotations[i] = try self.nextTypeAnnotation(with: constantPool)
+            }
+            attr = .runtimeVisibleTypeAnnotations(annotations: annotations.compactMap { $0 })
+        case "RuntimeInvisibleTypeAnnotations":
+            let numAnnotations = self.next(assumingTo: UInt16.self).bigEndian
+
+            var annotations = [TypeAnnotation?](repeating: nil, count: Int(numAnnotations))
+            for i in 0..<annotations.count {
+                annotations[i] = try self.nextTypeAnnotation(with: constantPool)
+            }
+            attr = .runtimeInvisibleTypeAnnotations(annotations: annotations.compactMap { $0 })
         default:
             throw ClassFileError.unsupportedAttributeName(attrName)
         }
 
         return attr
     }
+}
 
+// annotations
+extension UnsafeRawPointer {
     mutating func nextAnnotation(with constantPool: [ConstantPoolInfo]) throws -> Annotation {
         let typeIndex = self.next(assumingTo: UInt16.self).bigEndian
-        let numElementValuePairs = self.next(assumingTo: UInt16.self).bigEndian
 
-        var pairs = [Annotation.ElementValuePair?](repeating: nil, count: Int(numElementValuePairs))
+        let numElementValuePairs = self.next(assumingTo: UInt16.self).bigEndian
+        var pairs = [AnnotationElementValuePair?](repeating: nil, count: Int(numElementValuePairs))
         for i in 0..<pairs.count {
             let nameIndex = self.next(assumingTo: UInt16.self).bigEndian
             pairs[i] = (elementNameIndex: nameIndex, value: try self.nextAnnotationElementValue(with: constantPool))
@@ -105,7 +158,7 @@ extension UnsafeRawPointer {
         return Annotation(typeIndex: typeIndex, elementValuePairs: pairs.compactMap { $0 })
     }
 
-    mutating func nextAnnotationElementValue(with constantPool: [ConstantPoolInfo]) throws -> Annotation.ElementValue {
+    mutating func nextAnnotationElementValue(with constantPool: [ConstantPoolInfo]) throws -> AnnotationElementValue {
         let tag = self.next(assumingTo: UInt8.self).bigEndian
 
         switch tag {
@@ -179,7 +232,7 @@ extension UnsafeRawPointer {
         case Character("[").asciiValue:
             let numValues = self.next(assumingTo: UInt16.self).bigEndian
 
-            var values = [Annotation.ElementValue?](repeating: nil, count: Int(numValues))
+            var values = [AnnotationElementValue?](repeating: nil, count: Int(numValues))
             for i in 0..<values.count {
                 values[i] = try self.nextAnnotationElementValue(with: constantPool)
             }
@@ -187,5 +240,78 @@ extension UnsafeRawPointer {
         default:
             throw ClassFileError.unsupportedAnnotationelementValueTag(tag)
         }
+    }
+}
+
+
+// type annotations
+extension UnsafeRawPointer {
+
+    mutating func nextTypeAnnotation(with constantPool: [ConstantPoolInfo]) throws -> TypeAnnotation {
+        let targetType = self.next(assumingTo: UInt8.self).bigEndian
+
+        let targetInfo: TypeAnnotation.Target
+        switch targetType {
+        case 0x00, 0x01:
+            let index = self.next(assumingTo: UInt8.self).bigEndian
+            targetInfo = .typeParameter(index: index)
+        case 0x10:
+            let index = self.next(assumingTo: UInt16.self).bigEndian
+            targetInfo = .superType(index: index)
+        case 0x11, 0x12:
+            let typeParameterIndex = self.next(assumingTo: UInt8.self).bigEndian
+            let boundIndex = self.next(assumingTo: UInt8.self).bigEndian
+            targetInfo = .typeParameterBound(typeParameterIndex: typeParameterIndex, boundIndex: boundIndex)
+        case 0x13, 0x14, 0x15:
+            targetInfo = .empty
+        case 0x16:
+            let index = self.next(assumingTo: UInt8.self).bigEndian
+            targetInfo = .formalParameter(index: index)
+        case 0x17:
+            let index = self.next(assumingTo: UInt16.self).bigEndian
+            targetInfo = .`throws`(index: index)
+        case 0x40, 0x41:
+            let length = self.next(assumingTo: UInt16.self).bigEndian
+
+            var table = [TypeAnnotation.Target.LocalVariable?](repeating: nil, count: Int(length))
+            for i in 0..<length {
+                let startPC = self.next(assumingTo: UInt16.self).bigEndian
+                let length = self.next(assumingTo: UInt16.self).bigEndian
+                let index = self.next(assumingTo: UInt16.self).bigEndian
+                table[Int(i)] = .init(startPC: startPC, length: length, index: index)
+            }
+            targetInfo = .localvar(table: table.compactMap { $0 })
+        case 0x42:
+            let index = self.next(assumingTo: UInt16.self).bigEndian
+            targetInfo = .`catch`(exceptionTableIndex: index)
+        case 0x43, 0x44, 0x45, 0x46:
+            let value = self.next(assumingTo: UInt16.self).bigEndian
+            targetInfo = .offset(value)
+        case 0x47, 0x48, 0x49, 0x4A, 0x4B:
+            let offset = self.next(assumingTo: UInt16.self).bigEndian
+            let index = self.next(assumingTo: UInt8.self).bigEndian
+            targetInfo = .typeArgument(offset: offset, typeArgumentIndex: index)
+        default:
+            throw ClassFileError.unsupportedTypeAnnotationTarget(targetType)
+        }
+
+        let pathLength = self.next(assumingTo: UInt8.self).bigEndian
+        var path = [TypeAnnotation.TypePath.Path?](repeating: nil, count: Int(pathLength))
+        for i in 0..<pathLength {
+            let typePathKind = self.next(assumingTo: UInt8.self).bigEndian
+            let typeArgumentIndex = self.next(assumingTo: UInt8.self).bigEndian
+            path[Int(i)] = .init(typePathKind: typePathKind, typeArgumentIndex: typeArgumentIndex)
+        }
+
+        let typePath = TypeAnnotation.TypePath(path: path.compactMap { $0 })
+
+        let numElementValuePairs = self.next(assumingTo: UInt16.self).bigEndian
+        var pairs = [AnnotationElementValuePair?](repeating: nil, count: Int(numElementValuePairs))
+        for i in 0..<pairs.count {
+            let nameIndex = self.next(assumingTo: UInt16.self).bigEndian
+            pairs[i] = (elementNameIndex: nameIndex, value: try self.nextAnnotationElementValue(with: constantPool))
+        }
+
+        return TypeAnnotation(targetInfo: targetInfo, targetPath: typePath, elementValuePairs: pairs.compactMap { $0 })
     }
 }
