@@ -34,11 +34,8 @@ struct ClassFile {
         self.majorVersion = p.next(assumingTo: UInt16.self).bigEndian
         self.constantPoolCount = p.next(assumingTo: UInt16.self).bigEndian
 
-        var constantPool = [ConstantPoolInfo?](repeating: nil, count: Int(self.constantPoolCount - 1))
-        for i in 0..<constantPool.count {
-            constantPool[Int(i)] = try p.nextConstantPoolInfo()
-        }
-        self.constantPool = constantPool.compactMap { $0 }
+        let constantPool = try makeArray(count: Int(self.constantPoolCount - 1)) { try p.nextConstantPoolInfo() }
+        self.constantPool = constantPool
 
         self.accessFlag = AccessFlag(rawValue: p.next(assumingTo: UInt16.self).bigEndian)
         self.thisClassIndex = p.next(assumingTo: UInt16.self).bigEndian
@@ -62,32 +59,19 @@ struct ClassFile {
         }
 
         self.interfacesCount = p.next(assumingTo: UInt16.self).bigEndian
-
-        var interfaces = [UInt16?](repeating: nil, count: Int(self.interfacesCount))
-        for i in 0..<interfaces.count {
+        self.interfaceIndexes = try makeArray(count: Int(self.interfacesCount)) {
             let index = p.next(assumingTo: UInt16.self).bigEndian
-            guard case .class = self.constantPool[Int(index - 1)] else {
+            guard case .class = constantPool[Int(index - 1)] else {
                 throw ClassFileError.interfaceNotClassInfo(index)
             }
-            interfaces[Int(i)] = index
+            return index
         }
-        self.interfaceIndexes = interfaces.compactMap { $0 }
 
         self.fieldsCount = p.next(assumingTo: UInt16.self).bigEndian
-
-        var fields = [Field?](repeating: nil, count: Int(self.fieldsCount))
-        for i in 0..<fields.count {
-            fields[Int(i)] = try p.nextField(with: self.constantPool)
-        }
-        self.fields = fields.compactMap { $0 }
+        self.fields = try makeArray(count: Int(self.fieldsCount)) { try p.nextField(with: constantPool) }
 
         self.methodsCount = p.next(assumingTo: UInt16.self).bigEndian
-
-        var methods = [Method?](repeating: nil, count: Int(self.methodsCount))
-        for i in 0..<fields.count {
-            methods[Int(i)] = try p.nextMethod(with: self.constantPool)
-        }
-        self.methods = methods.compactMap { $0 }
+        self.methods = try makeArray(count: Int(self.methodsCount)) { try p.nextMethod(with: constantPool) }
     }
 
     init(forReadingAtPath path: String) throws {
@@ -164,4 +148,12 @@ extension UnsafeRawPointer {
         self += MemoryLayout<T>.size
         return value
     }
+}
+
+func makeArray<T>(count: Int, next: () throws -> T) throws -> [T] {
+    var array = [T?](repeating: nil, count: count)
+    for i in 0..<count {
+        array[Int(i)] = try next()
+    }
+    return array.compactMap { $0 }
 }

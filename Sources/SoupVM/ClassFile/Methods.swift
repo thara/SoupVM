@@ -30,18 +30,15 @@ extension UnsafeRawPointer {
         let accessFlags = MethodAccessFlag(rawValue: self.next(assumingTo: UInt16.self).bigEndian)
         let nameIndex = self.next(assumingTo: UInt16.self).bigEndian
         let descriptorIndex = self.next(assumingTo: UInt16.self).bigEndian
-        let attributesCount = self.next(assumingTo: UInt16.self).bigEndian
 
-        var attributes = [Attribute?](repeating: nil, count: Int(attributesCount))
-        for i in 0..<attributes.count {
-            attributes[Int(i)] = try self.nextAttribute(with: constantPool)
-        }
+        let attributesCount = self.next(assumingTo: UInt16.self).bigEndian
+        let attributes = try makeArray(count: Int(attributesCount)) { try self.nextAttribute(with: constantPool) }
 
         let field = Method(
             accessFlags: accessFlags,
             nameIndex: nameIndex,
             descriptorIndex: descriptorIndex,
-            attributes: attributes.compactMap { $0 })
+            attributes: attributes)
         return field
     }
 }

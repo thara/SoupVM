@@ -132,36 +132,24 @@ extension UnsafeRawPointer {
             attr = .signature(signatureIndex: signatureIndex)
         case "RuntimeVisibleAnnotations":
             let numAnnotations = self.next(assumingTo: UInt16.self).bigEndian
+            let annotations = try makeArray(count: Int(numAnnotations)) { try self.nextAnnotation(with: constantPool) }
 
-            var annotations = [Annotation?](repeating: nil, count: Int(numAnnotations))
-            for i in 0..<annotations.count {
-                annotations[i] = try self.nextAnnotation(with: constantPool)
-            }
-            attr = .runtimeVisibleAnnotations(annotations: annotations.compactMap { $0 })
+            attr = .runtimeVisibleAnnotations(annotations: annotations)
         case "RuntimeInvisibleAnnotations":
             let numAnnotations = self.next(assumingTo: UInt16.self).bigEndian
+            let annotations = try makeArray(count: Int(numAnnotations)) { try self.nextAnnotation(with: constantPool) }
 
-            var annotations = [Annotation?](repeating: nil, count: Int(numAnnotations))
-            for i in 0..<annotations.count {
-                annotations[i] = try self.nextAnnotation(with: constantPool)
-            }
-            attr = .runtimeInvisibleAnnotations(annotations: annotations.compactMap { $0 })
+            attr = .runtimeInvisibleAnnotations(annotations: annotations)
         case "RuntimeVisibleTypeAnnotations":
             let numAnnotations = self.next(assumingTo: UInt16.self).bigEndian
+            let annotations = try makeArray(count: Int(numAnnotations)) { try self.nextTypeAnnotation(with: constantPool) }
 
-            var annotations = [TypeAnnotation?](repeating: nil, count: Int(numAnnotations))
-            for i in 0..<annotations.count {
-                annotations[i] = try self.nextTypeAnnotation(with: constantPool)
-            }
-            attr = .runtimeVisibleTypeAnnotations(annotations: annotations.compactMap { $0 })
+            attr = .runtimeVisibleTypeAnnotations(annotations: annotations)
         case "RuntimeInvisibleTypeAnnotations":
             let numAnnotations = self.next(assumingTo: UInt16.self).bigEndian
+            let annotations = try makeArray(count: Int(numAnnotations)) { try self.nextTypeAnnotation(with: constantPool) }
 
-            var annotations = [TypeAnnotation?](repeating: nil, count: Int(numAnnotations))
-            for i in 0..<annotations.count {
-                annotations[i] = try self.nextTypeAnnotation(with: constantPool)
-            }
-            attr = .runtimeInvisibleTypeAnnotations(annotations: annotations.compactMap { $0 })
+            attr = .runtimeInvisibleTypeAnnotations(annotations: annotations)
         default:
             throw ClassFileError.unsupportedAttributeName(attrName)
         }
@@ -176,13 +164,11 @@ extension UnsafeRawPointer {
         let typeIndex = self.next(assumingTo: UInt16.self).bigEndian
 
         let numElementValuePairs = self.next(assumingTo: UInt16.self).bigEndian
-        var pairs = [AnnotationElementValuePair?](repeating: nil, count: Int(numElementValuePairs))
-        for i in 0..<pairs.count {
+        let elementValuePairs: [AnnotationElementValuePair] = try makeArray(count: Int(numElementValuePairs)) {
             let nameIndex = self.next(assumingTo: UInt16.self).bigEndian
-            pairs[i] = (elementNameIndex: nameIndex, value: try self.nextAnnotationElementValue(with: constantPool))
+            return (elementNameIndex: nameIndex, value: try self.nextAnnotationElementValue(with: constantPool))
         }
-
-        return Annotation(typeIndex: typeIndex, elementValuePairs: pairs.compactMap { $0 })
+        return Annotation(typeIndex: typeIndex, elementValuePairs: elementValuePairs)
     }
 
     mutating func nextAnnotationElementValue(with constantPool: [ConstantPoolInfo]) throws -> AnnotationElementValue {
@@ -258,12 +244,9 @@ extension UnsafeRawPointer {
             return .annotationValue(annotation)
         case Character("[").asciiValue:
             let numValues = self.next(assumingTo: UInt16.self).bigEndian
+            let values = try makeArray(count: Int(numValues)) { try self.nextAnnotationElementValue(with: constantPool) }
 
-            var values = [AnnotationElementValue?](repeating: nil, count: Int(numValues))
-            for i in 0..<values.count {
-                values[i] = try self.nextAnnotationElementValue(with: constantPool)
-            }
-            return .arrayValue(values.compactMap { $0 })
+            return .arrayValue(values)
         default:
             throw ClassFileError.unsupportedAnnotationelementValueTag(tag)
         }
@@ -300,14 +283,13 @@ extension UnsafeRawPointer {
         case 0x40, 0x41:
             let length = self.next(assumingTo: UInt16.self).bigEndian
 
-            var table = [TypeAnnotation.Target.LocalVariable?](repeating: nil, count: Int(length))
-            for i in 0..<length {
+            let table: [TypeAnnotation.Target.LocalVariable] = try makeArray(count: Int(length)) {
                 let startPC = self.next(assumingTo: UInt16.self).bigEndian
                 let length = self.next(assumingTo: UInt16.self).bigEndian
                 let index = self.next(assumingTo: UInt16.self).bigEndian
-                table[Int(i)] = .init(startPC: startPC, length: length, index: index)
+                return .init(startPC: startPC, length: length, index: index)
             }
-            targetInfo = .localvar(table: table.compactMap { $0 })
+            targetInfo = .localvar(table: table)
         case 0x42:
             let index = self.next(assumingTo: UInt16.self).bigEndian
             targetInfo = .`catch`(exceptionTableIndex: index)
@@ -323,22 +305,20 @@ extension UnsafeRawPointer {
         }
 
         let pathLength = self.next(assumingTo: UInt8.self).bigEndian
-        var path = [TypeAnnotation.TypePath.Path?](repeating: nil, count: Int(pathLength))
-        for i in 0..<pathLength {
+        let path: [TypeAnnotation.TypePath.Path] = try makeArray(count: Int(pathLength)) {
             let typePathKind = self.next(assumingTo: UInt8.self).bigEndian
             let typeArgumentIndex = self.next(assumingTo: UInt8.self).bigEndian
-            path[Int(i)] = .init(typePathKind: typePathKind, typeArgumentIndex: typeArgumentIndex)
+            return .init(typePathKind: typePathKind, typeArgumentIndex: typeArgumentIndex)
         }
 
-        let typePath = TypeAnnotation.TypePath(path: path.compactMap { $0 })
+        let typePath = TypeAnnotation.TypePath(path: path)
 
         let numElementValuePairs = self.next(assumingTo: UInt16.self).bigEndian
-        var pairs = [AnnotationElementValuePair?](repeating: nil, count: Int(numElementValuePairs))
-        for i in 0..<pairs.count {
+        let elementValuePairs: [AnnotationElementValuePair] = try makeArray(count: Int(numElementValuePairs)) {
             let nameIndex = self.next(assumingTo: UInt16.self).bigEndian
-            pairs[i] = (elementNameIndex: nameIndex, value: try self.nextAnnotationElementValue(with: constantPool))
+            return (elementNameIndex: nameIndex, value: try self.nextAnnotationElementValue(with: constantPool))
         }
 
-        return TypeAnnotation(targetInfo: targetInfo, targetPath: typePath, elementValuePairs: pairs.compactMap { $0 })
+        return TypeAnnotation(targetInfo: targetInfo, targetPath: typePath, elementValuePairs: elementValuePairs)
     }
 }
