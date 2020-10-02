@@ -1,6 +1,7 @@
 // attribute_info
 enum Attribute {
     case constantValue(valueIndex: UInt16)
+    case code(maxStack: UInt16, maxLocals: UInt16, code: [UInt8], exceptionTable: [ExceptionTableEntry], attributes: [Attribute])
     case synthetic
     case deprecated
     case signature(signatureIndex: UInt16)
@@ -84,6 +85,32 @@ extension UnsafeRawPointer {
             default:
                 throw ClassFileError.attributeInvalidConstantPoolEntryType(constantValueIndex)
             }
+        case "Code":
+            let maxStack = self.next(assumingTo: UInt16.self).bigEndian
+            let maxLocals = self.next(assumingTo: UInt16.self).bigEndian
+            let codeLength = self.next(assumingTo: UInt32.self).bigEndian
+
+            let base = self.assumingMemoryBound(to: UInt8.self)
+            let code = Array(UnsafeBufferPointer(start: base, count: Int(codeLength)))
+            self += code.count
+
+            let exceptionTableLength = Int(self.next(assumingTo: UInt16.self).bigEndian)
+            let exceptionTable = try [ExceptionTableEntry](unsafeUninitializedCapacity: exceptionTableLength) { buffer, initializedCount in
+                for i in 0..<exceptionTableLength {
+                    buffer[Int(i)] = try self.nextExceptionTableEntry(with: constantPool)
+                }
+                initializedCount = exceptionTableLength
+            }
+
+            let attributeCount = Int(self.next(assumingTo: UInt16.self).bigEndian)
+            let attributes = try [Attribute](unsafeUninitializedCapacity: attributeCount) { buffer, initializedCount in
+                for i in 0..<attributeCount {
+                    buffer[Int(i)] = try self.nextAttribute(with: constantPool)
+                }
+                initializedCount = attributeCount
+            }
+
+            attr = .code(maxStack: maxStack, maxLocals: maxLocals, code: code, exceptionTable: exceptionTable, attributes: attributes)
         case "Synthetic":
             guard attributeLength == 0 else {
                 throw ClassFileError.invalidAttributeLength(attrName, attributeLength)

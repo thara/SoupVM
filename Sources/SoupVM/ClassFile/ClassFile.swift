@@ -17,6 +17,9 @@ struct ClassFile {
     let fieldsCount: UInt16
     let fields: [Field]
 
+    let methodsCount: UInt16
+    let methods: [Method]
+
     static let magicNumber: [UInt8] = [0xCA, 0xFE, 0xBA, 0xBE]
 
     init(bytes: [UInt8]) throws {
@@ -77,6 +80,14 @@ struct ClassFile {
             fields[Int(i)] = try p.nextField(with: self.constantPool)
         }
         self.fields = fields.compactMap { $0 }
+
+        self.methodsCount = p.next(assumingTo: UInt16.self).bigEndian
+
+        var methods = [Method?](repeating: nil, count: Int(self.methodsCount))
+        for i in 0..<fields.count {
+            methods[Int(i)] = try p.nextMethod(with: self.constantPool)
+        }
+        self.methods = methods.compactMap { $0 }
     }
 
     init(forReadingAtPath path: String) throws {
@@ -129,6 +140,8 @@ enum ClassFileError: Error {
     case unsupportedAnnotationelementValueTag(UInt8)
 
     case unsupportedTypeAnnotationTarget(UInt8)
+
+    case invalidExceptionTableEntryCatchTypeIndex(UInt16)
 }
 
 struct AccessFlag: OptionSet {
