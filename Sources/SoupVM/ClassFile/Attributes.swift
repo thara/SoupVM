@@ -5,6 +5,7 @@ enum Attribute {
     case exceptions(exceptionIndexTable: [UInt16])
     case runtimeVisibleParameterAnnotations(parameterAnnotations: [[Annotation]])
     case runtimeInvisibleParameterAnnotations(parameterAnnotations: [[Annotation]])
+    case annotationDefault(defaultValue: AnnotationElementValue)
     case synthetic
     case deprecated
     case signature(signatureIndex: UInt16)
@@ -139,6 +140,9 @@ extension UnsafeRawPointer {
             }
 
             attr = .runtimeInvisibleParameterAnnotations(parameterAnnotations: parameterAnnotations)
+        case "AnnotationDefault":
+            let defaultValue = try nextAnnotationElementValue(with: constantPool)
+            attr = .annotationDefault(defaultValue: defaultValue)
         case "Synthetic":
             guard attributeLength == 0 else {
                 throw ClassFileError.invalidAttributeLength(attrName, attributeLength)
