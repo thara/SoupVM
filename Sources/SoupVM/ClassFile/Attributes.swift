@@ -96,19 +96,13 @@ extension UnsafeRawPointer {
             self += code.count
 
             let exceptionTableLength = Int(self.next(assumingTo: UInt16.self).bigEndian)
-            let exceptionTable = try [ExceptionTableEntry](unsafeUninitializedCapacity: exceptionTableLength) { buffer, initializedCount in
-                for i in 0..<exceptionTableLength {
-                    buffer[Int(i)] = try self.nextExceptionTableEntry(with: constantPool)
-                }
-                initializedCount = exceptionTableLength
+            let exceptionTable = try makeArray(count: exceptionTableLength) {
+                try self.nextExceptionTableEntry(with: constantPool)
             }
 
             let attributeCount = Int(self.next(assumingTo: UInt16.self).bigEndian)
-            let attributes = try [Attribute](unsafeUninitializedCapacity: attributeCount) { buffer, initializedCount in
-                for i in 0..<attributeCount {
-                    buffer[Int(i)] = try self.nextAttribute(with: constantPool)
-                }
-                initializedCount = attributeCount
+            let attributes = try makeArray(count: attributeCount) {
+                try self.nextAttribute(with: constantPool)
             }
 
             attr = .code(maxStack: maxStack, maxLocals: maxLocals, code: code, exceptionTable: exceptionTable, attributes: attributes)
