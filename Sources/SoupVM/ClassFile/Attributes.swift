@@ -2,6 +2,7 @@
 enum Attribute {
     case constantValue(valueIndex: UInt16)
     case code(maxStack: UInt16, maxLocals: UInt16, code: [UInt8], exceptionTable: [ExceptionTableEntry], attributes: [Attribute])
+    case exceptions(exceptionIndexTable: [UInt16])
     case synthetic
     case deprecated
     case signature(signatureIndex: UInt16)
@@ -111,6 +112,17 @@ extension UnsafeRawPointer {
             }
 
             attr = .code(maxStack: maxStack, maxLocals: maxLocals, code: code, exceptionTable: exceptionTable, attributes: attributes)
+        case "Exceptions":
+            let numberOfExceptions = Int(self.next(assumingTo: UInt16.self).bigEndian)
+            let table: [UInt16] = try makeArray(count: numberOfExceptions) {
+                let index = self.next(assumingTo: UInt16.self).bigEndian
+                guard case .class = constantPool[Int(index + 1)] else {
+                    throw ClassFileError.attributeInvalidConstantPoolEntryType(index)
+                }
+                return index
+            }
+
+            attr = .exceptions(exceptionIndexTable: table)
         case "Synthetic":
             guard attributeLength == 0 else {
                 throw ClassFileError.invalidAttributeLength(attrName, attributeLength)
