@@ -3,6 +3,7 @@ enum Attribute {
     case constantValue(valueIndex: UInt16)
     case code(maxStack: UInt16, maxLocals: UInt16, code: [UInt8], exceptionTable: [ExceptionTableEntry], attributes: [Attribute])
     case exceptions(exceptionIndexTable: [UInt16])
+    case runtimeVisibleParameterAnnotations(parameterAnnotations: [[Annotation]])
     case synthetic
     case deprecated
     case signature(signatureIndex: UInt16)
@@ -117,6 +118,16 @@ extension UnsafeRawPointer {
             }
 
             attr = .exceptions(exceptionIndexTable: table)
+        case "RuntimeVisibleParameterAnnotations":
+            let numParameters = Int(self.next(assumingTo: UInt8.self).bigEndian)
+            let parameterAnnotations: [[Annotation]] = try makeArray(count: numParameters) {
+                let numAnnotations = Int(self.next(assumingTo: UInt16.self).bigEndian)
+                return try makeArray(count: numAnnotations) {
+                    try nextAnnotation(with: constantPool)
+                }
+            }
+
+            attr = .runtimeVisibleParameterAnnotations(parameterAnnotations: parameterAnnotations)
         case "Synthetic":
             guard attributeLength == 0 else {
                 throw ClassFileError.invalidAttributeLength(attrName, attributeLength)
