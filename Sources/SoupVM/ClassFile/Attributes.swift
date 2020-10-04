@@ -6,6 +6,7 @@ enum Attribute {
     case runtimeVisibleParameterAnnotations(parameterAnnotations: [[Annotation]])
     case runtimeInvisibleParameterAnnotations(parameterAnnotations: [[Annotation]])
     case annotationDefault(defaultValue: AnnotationElementValue)
+    case methodParameters(parameters: [MethodParameter])
     case synthetic
     case deprecated
     case signature(signatureIndex: UInt16)
@@ -63,6 +64,19 @@ struct TypeAnnotation {
     var targetInfo: Target
     var targetPath: TypePath
     var elementValuePairs: [AnnotationElementValuePair]
+}
+
+struct MethodParameter {
+    var nameIndex: UInt16
+    var accessFlags: AccessFlag
+
+    struct AccessFlag: OptionSet {
+        let rawValue: UInt16
+
+        static let final = AccessFlag(rawValue: 0x0010)
+        static let synthetic = AccessFlag(rawValue: 0x1000)
+        static let mandated = AccessFlag(rawValue: 0x8000)
+    }
 }
 
 extension UnsafeRawPointer {
@@ -143,6 +157,13 @@ extension UnsafeRawPointer {
         case "AnnotationDefault":
             let defaultValue = try nextAnnotationElementValue(with: constantPool)
             attr = .annotationDefault(defaultValue: defaultValue)
+        case "MethodParameters":
+            let parametersCount = Int(self.next(assumingTo: UInt8.self).bigEndian)
+            let parameters = try makeArray(count: parametersCount) {
+                try nextMethodParameter(with: constantPool)
+            }
+
+            attr = .methodParameters(parameters: parameters)
         case "Synthetic":
             guard attributeLength == 0 else {
                 throw ClassFileError.invalidAttributeLength(attrName, attributeLength)
@@ -352,5 +373,19 @@ extension UnsafeRawPointer {
         }
 
         return TypeAnnotation(targetInfo: targetInfo, targetPath: typePath, elementValuePairs: elementValuePairs)
+    }
+}
+
+
+// method parameter
+extension UnsafeRawPointer {
+
+    mutating func nextMethodParameter(with constantPool: [ConstantPoolInfo]) throws -> MethodParameter {
+        let nameIndex = next(assumingTo: UInt16.self).bigEndian
+        guard case .utf8 = constantPool[Int(nameIndex) + 1] else {
+            throw ClassFileError.attributeInvalidConstantPoolEntryType(nameIndex)
+        }
+        let accessFlags = next(assumingTo: UInt16.self).bigEndian
+        return MethodParameter(nameIndex: nameIndex, accessFlags: MethodParameter.AccessFlag(rawValue: accessFlags))
     }
 }
