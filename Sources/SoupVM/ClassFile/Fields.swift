@@ -31,7 +31,7 @@ extension UnsafeRawPointer {
         let descriptorIndex = self.next(assumingTo: UInt16.self).bigEndian
         let attributesCount = self.next(assumingTo: UInt16.self).bigEndian
 
-        let attributes = try makeArray(count: Int(attributesCount)) { try self.nextAttribute(with: constantPool) }
+        let attributes = try makeArray(count: Int(attributesCount)) { try self.nextAttribute(with: constantPool, for: .fieldInfo) }
 
         return Field(
             accessFlags: accessFlags,

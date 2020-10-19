@@ -84,9 +84,13 @@ struct MethodParameter {
     }
 }
 
+enum AttributeLocation {
+    case classFile, fieldInfo, methodInfo, code
+}
+
 extension UnsafeRawPointer {
 
-    mutating func nextAttribute(with constantPool: [ConstantPoolInfo]) throws -> Attribute {
+    mutating func nextAttribute(with constantPool: [ConstantPoolInfo], for location: AttributeLocation) throws -> Attribute {
         let attributeNameIndex = self.next(assumingTo: UInt16.self).bigEndian
         let attributeLength = self.next(assumingTo: UInt32.self).bigEndian
 
@@ -95,8 +99,8 @@ extension UnsafeRawPointer {
         }
 
         let attr: Attribute
-        switch attrName {
-        case "SourceFile":
+        switch (attrName, location) {
+        case ("SourceFile", .classFile):
             guard attributeLength == 2 else {
                 throw ClassFileError.invalidAttributeLength(attrName, attributeLength)
             }
@@ -105,13 +109,13 @@ extension UnsafeRawPointer {
                 throw ClassFileError.attributeInvalidConstantPoolEntryType(sourcefileIndex)
             }
             attr = .sourceFile(sourcefileIndex: sourcefileIndex)
-        case "InnerClasses":
+        case ("InnerClasses", .classFile):
             let numberOfClasses = self.next(assumingTo: UInt16.self).bigEndian
             let classes = try makeArray(count: Int(numberOfClasses)) {
                 try self.nextClassEntry(with: constantPool)
             }
             attr = .innerClasses(classes: classes)
-        case "EnclosingMethod":
+        case ("EnclosingMethod", .classFile):
             let classIndex = self.next(assumingTo: UInt16.self).bigEndian
             guard case .utf8 = constantPool[Int(classIndex - 1)] else {
                 throw ClassFileError.attributeInvalidConstantPoolEntryType(classIndex)
@@ -124,16 +128,16 @@ extension UnsafeRawPointer {
                 }
             }
             attr = .enclosingMethod(classIndex: classIndex, methodIndex: methodIndex)
-        case "SourceDebugExtension":
+        case ("SourceDebugExtension", .classFile):
             let base = self.assumingMemoryBound(to: UInt8.self)
             let bytes = Array(UnsafeBufferPointer(start: base, count: Int(attributeLength)))
             self += bytes.count
             attr = .sourceDebugExtension(string: String(decoding: bytes, as: UTF8.self))
-        case "BootstrapMethods":
+        case ("BootstrapMethods", .classFile):
             let numBootstrapMethods = self.next(assumingTo: UInt16.self).bigEndian
             let bootstrapMethods = try makeArray(count: Int(numBootstrapMethods)) { try nextBootstrapMethod(with: constantPool) }
             attr = .bootstrapMethods(bootstrapMethods: bootstrapMethods)
-        case "ConstantValue":
+        case ("ConstantValue", .fieldInfo):
             guard attributeLength == 2 else {
                 throw ClassFileError.invalidAttributeLength(attrName, attributeLength)
             }
@@ -145,7 +149,7 @@ extension UnsafeRawPointer {
             default:
                 throw ClassFileError.attributeInvalidConstantPoolEntryType(constantValueIndex)
             }
-        case "Code":
+        case ("Code", .methodInfo):
             let maxStack = self.next(assumingTo: UInt16.self).bigEndian
             let maxLocals = self.next(assumingTo: UInt16.self).bigEndian
             let codeLength = self.next(assumingTo: UInt32.self).bigEndian
@@ -161,11 +165,11 @@ extension UnsafeRawPointer {
 
             let attributeCount = Int(self.next(assumingTo: UInt16.self).bigEndian)
             let attributes = try makeArray(count: attributeCount) {
-                try self.nextAttribute(with: constantPool)
+                try self.nextAttribute(with: constantPool, for: .code)
             }
 
             attr = .code(maxStack: maxStack, maxLocals: maxLocals, code: code, exceptionTable: exceptionTable, attributes: attributes)
-        case "Exceptions":
+        case ("Exceptions", .methodInfo):
             let numberOfExceptions = Int(self.next(assumingTo: UInt16.self).bigEndian)
             let table: [UInt16] = try makeArray(count: numberOfExceptions) {
                 let index = self.next(assumingTo: UInt16.self).bigEndian
@@ -176,7 +180,7 @@ extension UnsafeRawPointer {
             }
 
             attr = .exceptions(exceptionIndexTable: table)
-        case "RuntimeVisibleParameterAnnotations":
+        case ("RuntimeVisibleParameterAnnotations", .methodInfo):
             let numParameters = Int(self.next(assumingTo: UInt8.self).bigEndian)
             let parameterAnnotations: [[Annotation]] = try makeArray(count: numParameters) {
                 let numAnnotations = Int(self.next(assumingTo: UInt16.self).bigEndian)
@@ -186,7 +190,7 @@ extension UnsafeRawPointer {
             }
 
             attr = .runtimeVisibleParameterAnnotations(parameterAnnotations: parameterAnnotations)
-        case "RuntimeInvisibleParameterAnnotations":
+        case ("RuntimeInvisibleParameterAnnotations", .methodInfo):
             let numParameters = Int(self.next(assumingTo: UInt8.self).bigEndian)
             let parameterAnnotations: [[Annotation]] = try makeArray(count: numParameters) {
                 let numAnnotations = Int(self.next(assumingTo: UInt16.self).bigEndian)
@@ -196,27 +200,27 @@ extension UnsafeRawPointer {
             }
 
             attr = .runtimeInvisibleParameterAnnotations(parameterAnnotations: parameterAnnotations)
-        case "AnnotationDefault":
+        case ("AnnotationDefault", .methodInfo):
             let defaultValue = try nextAnnotationElementValue(with: constantPool)
             attr = .annotationDefault(defaultValue: defaultValue)
-        case "MethodParameters":
+        case ("MethodParameters", .methodInfo):
             let parametersCount = Int(self.next(assumingTo: UInt8.self).bigEndian)
             let parameters = try makeArray(count: parametersCount) {
                 try nextMethodParameter(with: constantPool)
             }
 
             attr = .methodParameters(parameters: parameters)
-        case "Synthetic":
+        case ("Synthetic", .classFile), ("Synthetic", .fieldInfo), ("Synthetic", .methodInfo):
             guard attributeLength == 0 else {
                 throw ClassFileError.invalidAttributeLength(attrName, attributeLength)
             }
             attr = .synthetic
-        case "Deprecated":
+        case ("Deprecated", .classFile), ("Deprecated", .fieldInfo), ("Deprecated", .methodInfo):
             guard attributeLength == 0 else {
                 throw ClassFileError.invalidAttributeLength(attrName, attributeLength)
             }
             attr = .deprecated
-        case "Signature":
+        case ("Signature", .classFile), ("Signature", .fieldInfo), ("Signature", .methodInfo):
             guard attributeLength == 2 else {
                 throw ClassFileError.invalidAttributeLength(attrName, attributeLength)
             }
@@ -225,22 +229,22 @@ extension UnsafeRawPointer {
                 throw ClassFileError.attributeInvalidConstantPoolEntryType(signatureIndex)
             }
             attr = .signature(signatureIndex: signatureIndex)
-        case "RuntimeVisibleAnnotations":
+        case ("RuntimeVisibleAnnotations", .classFile), ("RuntimeVisibleAnnotations", .fieldInfo), ("RuntimeVisibleAnnotations", .methodInfo):
             let numAnnotations = self.next(assumingTo: UInt16.self).bigEndian
             let annotations = try makeArray(count: Int(numAnnotations)) { try self.nextAnnotation(with: constantPool) }
 
             attr = .runtimeVisibleAnnotations(annotations: annotations)
-        case "RuntimeInvisibleAnnotations":
+        case ("RuntimeInvisibleAnnotations", .classFile), ("RuntimeInvisibleAnnotations", .fieldInfo), ("RuntimeInvisibleAnnotations", .methodInfo):
             let numAnnotations = self.next(assumingTo: UInt16.self).bigEndian
             let annotations = try makeArray(count: Int(numAnnotations)) { try self.nextAnnotation(with: constantPool) }
 
             attr = .runtimeInvisibleAnnotations(annotations: annotations)
-        case "RuntimeVisibleTypeAnnotations":
+        case ("RuntimeVisibleTypeAnnotations", .classFile), ("RuntimeVisibleTypeAnnotations", .fieldInfo), ("RuntimeVisibleTypeAnnotations", .methodInfo):
             let numAnnotations = self.next(assumingTo: UInt16.self).bigEndian
             let annotations = try makeArray(count: Int(numAnnotations)) { try self.nextTypeAnnotation(with: constantPool) }
 
             attr = .runtimeVisibleTypeAnnotations(annotations: annotations)
-        case "RuntimeInvisibleTypeAnnotations":
+        case ("RuntimeInvisibleTypeAnnotations", .classFile), ("RuntimeInvisibleTypeAnnotations", .fieldInfo), ("RuntimeInvisibleTypeAnnotations", .methodInfo):
             let numAnnotations = self.next(assumingTo: UInt16.self).bigEndian
             let annotations = try makeArray(count: Int(numAnnotations)) { try self.nextTypeAnnotation(with: constantPool) }
 

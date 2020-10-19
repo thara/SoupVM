@@ -77,7 +77,7 @@ struct ClassFile {
         self.methods = try makeArray(count: Int(self.methodsCount)) { try p.nextMethod(with: constantPool) }
 
         self.attributesCount = p.next(assumingTo: UInt16.self).bigEndian
-        self.attributes = try makeArray(count: Int(self.attributesCount)) { try p.nextAttribute(with: constantPool) }
+        self.attributes = try makeArray(count: Int(self.attributesCount)) { try p.nextAttribute(with: constantPool, for: .classFile) }
     }
 
     init(forReadingAtPath path: String) throws {
