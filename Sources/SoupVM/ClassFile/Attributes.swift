@@ -1,5 +1,10 @@
 // attribute_info
 enum Attribute {
+    case sourceFile(sourcefileIndex: UInt16)
+    case innerClasses(classes: [ClassEntry])
+    case enclosingMethod(classIndex: UInt16, methodIndex: UInt16)
+    case sourceDebugExtension(string: String)
+    case bootstrapMethods(bootstrapMethods: [BootstrapMethod])
     case constantValue(valueIndex: UInt16)
     case code(maxStack: UInt16, maxLocals: UInt16, code: [UInt8], exceptionTable: [ExceptionTableEntry], attributes: [Attribute])
     case exceptions(exceptionIndexTable: [UInt16])
@@ -91,6 +96,43 @@ extension UnsafeRawPointer {
 
         let attr: Attribute
         switch attrName {
+        case "SourceFile":
+            guard attributeLength == 2 else {
+                throw ClassFileError.invalidAttributeLength(attrName, attributeLength)
+            }
+            let sourcefileIndex = self.next(assumingTo: UInt16.self).bigEndian
+            guard case .utf8 = constantPool[Int(sourcefileIndex - 1)] else {
+                throw ClassFileError.attributeInvalidConstantPoolEntryType(sourcefileIndex)
+            }
+            attr = .sourceFile(sourcefileIndex: sourcefileIndex)
+        case "InnerClasses":
+            let numberOfClasses = self.next(assumingTo: UInt16.self).bigEndian
+            let classes = try makeArray(count: Int(numberOfClasses)) {
+                try self.nextClassEntry(with: constantPool)
+            }
+            attr = .innerClasses(classes: classes)
+        case "EnclosingMethod":
+            let classIndex = self.next(assumingTo: UInt16.self).bigEndian
+            guard case .utf8 = constantPool[Int(classIndex - 1)] else {
+                throw ClassFileError.attributeInvalidConstantPoolEntryType(classIndex)
+            }
+            let methodIndex = self.next(assumingTo: UInt16.self).bigEndian
+            if methodIndex != 0 {
+                // enclosed by a method or constructor
+                guard case .nameAndType = constantPool[Int(methodIndex - 1)] else {
+                    throw ClassFileError.attributeInvalidConstantPoolEntryType(methodIndex)
+                }
+            }
+            attr = .enclosingMethod(classIndex: classIndex, methodIndex: methodIndex)
+        case "SourceDebugExtension":
+            let base = self.assumingMemoryBound(to: UInt8.self)
+            let bytes = Array(UnsafeBufferPointer(start: base, count: Int(attributeLength)))
+            self += bytes.count
+            attr = .sourceDebugExtension(string: String(decoding: bytes, as: UTF8.self))
+        case "BootstrapMethods":
+            let numBootstrapMethods = self.next(assumingTo: UInt16.self).bigEndian
+            let bootstrapMethods = try makeArray(count: Int(numBootstrapMethods)) { try nextBootstrapMethod(with: constantPool) }
+            attr = .bootstrapMethods(bootstrapMethods: bootstrapMethods)
         case "ConstantValue":
             guard attributeLength == 2 else {
                 throw ClassFileError.invalidAttributeLength(attrName, attributeLength)
@@ -387,5 +429,32 @@ extension UnsafeRawPointer {
         }
         let accessFlags = next(assumingTo: UInt16.self).bigEndian
         return MethodParameter(nameIndex: nameIndex, accessFlags: MethodParameter.AccessFlag(rawValue: accessFlags))
+    }
+}
+
+// bootstrap methods
+struct BootstrapMethod {
+    var bootstrapMethodRef: UInt16
+    var bootstrapArguments: [UInt16]
+}
+
+extension UnsafeRawPointer {
+
+    mutating func nextBootstrapMethod(with constantPool: [ConstantPoolInfo]) throws -> BootstrapMethod {
+        let methodRef = next(assumingTo: UInt16.self).bigEndian
+        guard case .methodHandle = constantPool[Int(methodRef) + 1] else {
+            throw ClassFileError.invalidBootstrapMethodIndex(methodRef)
+        }
+        let numBootstrapArgs = next(assumingTo: UInt16.self).bigEndian
+        let args: [UInt16] = try makeArray(count: Int(numBootstrapArgs)) {
+            let index = next(assumingTo: UInt16.self).bigEndian
+            switch constantPool[Int(index) + 1] {
+            case .string, .class, .integer, .long, .float, .double, .methodHandle, .methodType:
+                return index
+            default:
+                throw ClassFileError.invalidBootstrapMethodIndex(index)
+            }
+        }
+        return BootstrapMethod(bootstrapMethodRef: methodRef, bootstrapArguments: args)
     }
 }

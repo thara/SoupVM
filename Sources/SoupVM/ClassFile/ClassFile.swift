@@ -20,6 +20,9 @@ struct ClassFile {
     let methodsCount: UInt16
     let methods: [Method]
 
+    let attributesCount: UInt16
+    let attributes: [Attribute]
+
     static let magicNumber: [UInt8] = [0xCA, 0xFE, 0xBA, 0xBE]
 
     init(bytes: [UInt8]) throws {
@@ -72,6 +75,9 @@ struct ClassFile {
 
         self.methodsCount = p.next(assumingTo: UInt16.self).bigEndian
         self.methods = try makeArray(count: Int(self.methodsCount)) { try p.nextMethod(with: constantPool) }
+
+        self.attributesCount = p.next(assumingTo: UInt16.self).bigEndian
+        self.attributes = try makeArray(count: Int(self.attributesCount)) { try p.nextAttribute(with: constantPool) }
     }
 
     init(forReadingAtPath path: String) throws {
@@ -126,6 +132,10 @@ enum ClassFileError: Error {
     case unsupportedTypeAnnotationTarget(UInt8)
 
     case invalidExceptionTableEntryCatchTypeIndex(UInt16)
+
+    case invalidClassEntryIndex(UInt16)
+
+    case invalidBootstrapMethodIndex(UInt16)
 }
 
 struct AccessFlag: OptionSet {
