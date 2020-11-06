@@ -136,6 +136,12 @@ enum ClassFileError: Error {
     case invalidClassEntryIndex(UInt16)
 
     case invalidBootstrapMethodIndex(UInt16)
+
+    case invalidLocalVariableNameIndex(UInt16)
+    case invalidLocalVariableDescriptorIndex(UInt16)
+
+    case invalidLocalVariableTypeNameIndex(UInt16)
+    case invalidLocalVariableTypeSignatureIndex(UInt16)
 }
 
 struct AccessFlag: OptionSet {

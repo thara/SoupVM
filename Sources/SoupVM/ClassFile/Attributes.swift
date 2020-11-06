@@ -17,6 +17,9 @@ enum Attribute {
     case signature(signatureIndex: UInt16)
     case runtimeVisibleAnnotations(annotations: [Annotation])
     case runtimeInvisibleAnnotations(annotations: [Annotation])
+    case lineNumberTable(lineNumberTable: [LineNumber])
+    case localVariableTable(localVariableTable: [LocalVariable])
+    case localVariableTypeTable(localVariableTypeTable: [LocalVariableType])
     case runtimeVisibleTypeAnnotations(annotations: [TypeAnnotation])
     case runtimeInvisibleTypeAnnotations(annotations: [TypeAnnotation])
 }
@@ -239,6 +242,29 @@ extension UnsafeRawPointer {
             let annotations = try makeArray(count: Int(numAnnotations)) { try self.nextAnnotation(with: constantPool) }
 
             attr = .runtimeInvisibleAnnotations(annotations: annotations)
+
+        case ("LineNumberTable", .code):
+            let length = self.next(assumingTo: UInt16.self).bigEndian
+
+            let lineNumbers = try makeArray(count: Int(length)) { () -> LineNumber in
+                let startPC = self.next(assumingTo: UInt16.self).bigEndian
+                let lineNumber = self.next(assumingTo: UInt16.self).bigEndian
+                return LineNumber(startPC: startPC, lineNumber: lineNumber)
+            }
+            attr = .lineNumberTable(lineNumberTable: lineNumbers)
+
+        case ("LocalVariableTable", .code):
+            let length = self.next(assumingTo: UInt16.self).bigEndian
+
+            let variables = try makeArray(count: Int(length)) { try self.nextLocalVariable(with: constantPool)  }
+            attr = .localVariableTable(localVariableTable: variables)
+
+        case ("LocalVariableTypeTable", .code):
+            let length = self.next(assumingTo: UInt16.self).bigEndian
+
+            let types = try makeArray(count: Int(length)) { try self.nextLocalVariableType(with: constantPool)  }
+            attr = .localVariableTypeTable(localVariableTypeTable: types)
+
         case ("RuntimeVisibleTypeAnnotations", .classFile), ("RuntimeVisibleTypeAnnotations", .fieldInfo), ("RuntimeVisibleTypeAnnotations", .methodInfo):
             let numAnnotations = self.next(assumingTo: UInt16.self).bigEndian
             let annotations = try makeArray(count: Int(numAnnotations)) { try self.nextTypeAnnotation(with: constantPool) }
@@ -460,5 +486,80 @@ extension UnsafeRawPointer {
             }
         }
         return BootstrapMethod(bootstrapMethodRef: methodRef, bootstrapArguments: args)
+    }
+}
+
+struct LineNumber {
+    var startPC: UInt16
+    var lineNumber: UInt16
+}
+
+struct LocalVariable {
+    var startPC: UInt16
+    var length: UInt16
+    var nameIndex: UInt16
+    var descriptorIndex: UInt16
+    var index: UInt16
+}
+
+extension UnsafeRawPointer {
+
+    mutating func nextLocalVariable(with constantPool: [ConstantPoolInfo]) throws -> LocalVariable {
+        let startPC = self.next(assumingTo: UInt16.self).bigEndian
+        let length = self.next(assumingTo: UInt16.self).bigEndian
+
+        let nameIndex = self.next(assumingTo: UInt16.self).bigEndian
+        guard case .utf8 = constantPool[Int(nameIndex) + 1] else {
+            throw ClassFileError.invalidLocalVariableNameIndex(nameIndex)
+        }
+
+        let descriptorIndex = self.next(assumingTo: UInt16.self).bigEndian
+        guard case .utf8 = constantPool[Int(descriptorIndex) + 1] else {
+            throw ClassFileError.invalidLocalVariableDescriptorIndex(nameIndex)
+        }
+
+        let index = self.next(assumingTo: UInt16.self).bigEndian
+
+        return LocalVariable(
+            startPC: startPC,
+            length: length,
+            nameIndex: nameIndex,
+            descriptorIndex: descriptorIndex,
+            index: index)
+    }
+}
+
+struct LocalVariableType {
+    var startPC: UInt16
+    var length: UInt16
+    var nameIndex: UInt16
+    var signatureIndex: UInt16
+    var index: UInt16
+}
+
+extension UnsafeRawPointer {
+
+    mutating func nextLocalVariableType(with constantPool: [ConstantPoolInfo]) throws -> LocalVariableType {
+        let startPC = self.next(assumingTo: UInt16.self).bigEndian
+        let length = self.next(assumingTo: UInt16.self).bigEndian
+
+        let nameIndex = self.next(assumingTo: UInt16.self).bigEndian
+        guard case .utf8 = constantPool[Int(nameIndex) + 1] else {
+            throw ClassFileError.invalidLocalVariableTypeNameIndex(nameIndex)
+        }
+
+        let signatureIndex = self.next(assumingTo: UInt16.self).bigEndian
+        guard case .utf8 = constantPool[Int(signatureIndex) + 1] else {
+            throw ClassFileError.invalidLocalVariableTypeSignatureIndex(nameIndex)
+        }
+
+        let index = self.next(assumingTo: UInt16.self).bigEndian
+
+        return LocalVariableType(
+            startPC: startPC,
+            length: length,
+            nameIndex: nameIndex,
+            signatureIndex: signatureIndex,
+            index: index)
     }
 }
